@@ -14,6 +14,7 @@ const staticDataLink = new ApolloLink((operation) => {
     const { query, operationName, variables } = operation;
     await delay(300);
     try {
+      console.info("Executing query: ", print(query), variables);
       const result = await graphql({
         schema,
         source: print(query),

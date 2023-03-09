@@ -12,9 +12,17 @@ import {
 } from "@apollo/client";
 
 import { link } from "./link.js";
-import { Subscriptions } from "./subscriptions.jsx";
 import { Layout } from "./layout.jsx";
 import "./index.css";
+
+const ALL_WIDGETS = gql`
+  query AllWidgets {
+    widgets {
+      id
+      name
+    }
+  }
+`;
 
 const ALL_PEOPLE = gql`
   query AllPeople {
@@ -25,60 +33,71 @@ const ALL_PEOPLE = gql`
   }
 `;
 
-const ADD_PERSON = gql`
-  mutation AddPerson($name: String) {
-    addPerson(name: $name) {
+const SINGLE_WIDGET = gql`
+  query SingleWidget($id: ID!) {
+    widget(id: $id) {
       id
       name
     }
   }
 `;
 
-function App() {
-  const [name, setName] = useState("");
-  const { loading, data } = useQuery(ALL_PEOPLE);
+const SINGLE_PERSON = gql`
+  query SinglePerson($id: ID!) {
+    person(id: $id) {
+      id
+      name
+    }
+  }
+`;
 
-  const [addPerson] = useMutation(ADD_PERSON, {
-    update: (cache, { data: { addPerson: addPersonData } }) => {
-      const peopleResult = cache.readQuery({ query: ALL_PEOPLE });
-
-      cache.writeQuery({
-        query: ALL_PEOPLE,
-        data: {
-          ...peopleResult,
-          people: [...peopleResult.people, addPersonData],
-        },
-      });
-    },
+const WidgetListItem = ({ id }) => {
+  const { loading, data, error } = useQuery(SINGLE_WIDGET, {
+    variables: { id },
   });
 
   return (
+    <li>
+      {loading ? "Loading..." : `${data.widget?.id}: ${data.widget?.name}`}
+    </li>
+  );
+}
+
+const PersonListItem = ({ id }) => {
+  const { loading, data, error } = useQuery(SINGLE_PERSON, {
+    variables: { id },
+  });
+
+  return (
+    <li>
+      {loading ? "Loading..." : `${data.person?.id}: ${data.person?.name}`}
+    </li>
+  );
+}
+
+function App() {
+  const { loading: widgetsLoading, data: widgetsData } = useQuery(ALL_WIDGETS);
+  const { loading: peopleLoading, data: peopleData } = useQuery(ALL_PEOPLE);
+
+  return (
     <main>
-      <h3>Home</h3>
-      <div className="add-person">
-        <label htmlFor="name">Name</label>
-        <input
-          type="text"
-          name="name"
-          value={name}
-          onChange={(evt) => setName(evt.target.value)}
-        />
-        <button
-          onClick={() => {
-            addPerson({ variables: { name } });
-            setName("");
-          }}
-        >
-          Add person
-        </button>
-      </div>
-      <h2>Names</h2>
-      {loading ? (
+      <h2>People</h2>
+      {peopleLoading ? (
         <p>Loading…</p>
       ) : (
         <ul>
-          {data?.people.map((person) => (
-            <li key={person.id}>{person.name}</li>
+          {peopleData?.people.map((person) => (
+            <PersonListItem key={person.id} id={person.id} />
+          ))}
+        </ul>
+      )}
+      <h2>Widgets</h2>
+      {widgetsLoading ? (
+        <p>Loading…</p>
+      ) : (
+        <ul>
+          {widgetsData?.widgets.map((widget) => (
+            <WidgetListItem key={widget.id} id={widget.id} />
           ))}
         </ul>
       )}
@@ -87,7 +106,33 @@ function App() {
 }
 
 const client = new ApolloClient({
-  cache: new InMemoryCache(),
+  cache: new InMemoryCache({
+    typePolicies: {
+      Query: {
+        fields: {
+          widget: {
+            read(existing, { args, toReference }) {
+              return toReference({
+                __typename: "Widget",
+                id: args.id
+              })
+            }
+          },
+          person: {
+            read(existing, { args, toReference }) {
+              return toReference({
+                __typename: "Person",
+                id: args.id
+              })
+            }
+          }
+        }
+      }
+    },
+    possibleTypes: {
+      Widget: ["FooWidget", "BarWidget"]
+    }
+  }),
   link,
 });
 
@@ -100,7 +145,6 @@ root.render(
       <Routes>
         <Route path="/" element={<Layout />}>
           <Route index element={<App />} />
-          <Route path="subscriptions-wslink" element={<Subscriptions />} />
         </Route>
       </Routes>
     </Router>
